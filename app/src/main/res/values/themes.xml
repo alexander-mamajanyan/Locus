@@ -1,0 +1,6 @@
+<resources>
+    <!-- Compose's LocusTheme (see ui/theme/Theme.kt) does the real theming.
+         This base style just keeps the manifest / system window happy before
+         the first Composable draws. -->
+    <style name="Theme.Locus" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
