@@ -1,0 +1,4 @@
+<resources>
+    <!-- Adaptive launcher icon background: the "ink" navy from the notebook theme. -->
+    <color name="ic_launcher_background">#1B2A4A</color>
+</resources>

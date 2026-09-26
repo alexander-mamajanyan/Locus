@@ -1,0 +1,96 @@
+diff --git a/README.md b/README.md
+index 3e6cfb0..9086180 100644
+--- a/README.md
++++ b/README.md
+@@ -44,6 +44,12 @@ screens draw from, so a "build" means the same live thing everywhere.
+   own apps. On older Android versions (or with `dynamicColor = false`) it
+   falls back to the custom "notebook" (light) / "chalkboard" (dark) palette.
+   See `ui/theme/Theme.kt`.
++- **Launcher icon** — a simple adaptive icon (navy background, a ring with
++  one marked point — a literal "locus"). Works on Android 8.0+ (API 26+),
++  which is effectively all real devices; on the rare API 24/25 device it'll
++  fall back to a system default icon since no legacy PNG set was generated.
++  Use Android Studio's Image Asset Studio (`File → New → Image Asset`) if
++  you want full legacy coverage or a different design later.
+ 
+ ## What's intentionally stubbed (this is a *base* app)
+ 
+@@ -56,9 +62,6 @@ screens draw from, so a "build" means the same live thing everywhere.
+   stand-ins for Fraunces / IBM Plex Sans / IBM Plex Mono. Drop `.ttf` files
+   into `res/font` and swap the `FontFamily` values to match the web version
+   exactly.
+-- **No launcher icon.** The manifest doesn't reference one, so Android uses
+-  a system default — use Android Studio's Image Asset Studio
+-  (`File → New → Image Asset`) to generate a real one in a couple of clicks.
+ - **Shapes are decorative, not draggable.** Adding a shape in Builder places
+   it at a fixed default position rather than letting you drag it — real
+   drag support would use `Modifier.pointerInput` + `detectDragGestures` on
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 10fa52f..9bf577a 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -3,6 +3,8 @@
+ 
+     <application
+         android:allowBackup="true"
++        android:icon="@mipmap/ic_launcher"
++        android:roundIcon="@mipmap/ic_launcher_round"
+         android:label="Locus"
+         android:supportsRtl="true"
+         android:theme="@style/Theme.Locus">
+diff --git a/app/src/main/res/drawable/ic_launcher_foreground.xml b/app/src/main/res/drawable/ic_launcher_foreground.xml
+new file mode 100644
+index 0000000..65034db
+--- /dev/null
++++ b/app/src/main/res/drawable/ic_launcher_foreground.xml
+@@ -0,0 +1,18 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="108dp"
++    android:height="108dp"
++    android:viewportWidth="108"
++    android:viewportHeight="108">
++
++    <!-- The "locus": a ring standing in for a set of points, with one point marked. -->
++    <path
++        android:pathData="M 28,54 A26,26 0 1,1 80,54 A26,26 0 1,1 28,54 Z"
++        android:strokeColor="#F2E9D8"
++        android:strokeWidth="7"
++        android:fillColor="#00000000" />
++
++    <path
++        android:pathData="M 45,26 A9,9 0 1,1 63,26 A9,9 0 1,1 45,26 Z"
++        android:fillColor="#E3B563" />
++
++</vector>
+diff --git a/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml b/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+new file mode 100644
+index 0000000..a8a8fa5
+--- /dev/null
++++ b/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
++    <background android:drawable="@color/ic_launcher_background" />
++    <foreground android:drawable="@drawable/ic_launcher_foreground" />
++</adaptive-icon>
+diff --git a/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml b/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+new file mode 100644
+index 0000000..a8a8fa5
+--- /dev/null
++++ b/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+@@ -0,0 +1,5 @@
++<?xml version="1.0" encoding="utf-8"?>
++<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
++    <background android:drawable="@color/ic_launcher_background" />
++    <foreground android:drawable="@drawable/ic_launcher_foreground" />
++</adaptive-icon>
+diff --git a/app/src/main/res/values/colors.xml b/app/src/main/res/values/colors.xml
+new file mode 100644
+index 0000000..8eee0d9
+--- /dev/null
++++ b/app/src/main/res/values/colors.xml
+@@ -0,0 +1,4 @@
++<resources>
++    <!-- Adaptive launcher icon background: the "ink" navy from the notebook theme. -->
++    <color name="ic_launcher_background">#1B2A4A</color>
++</resources>

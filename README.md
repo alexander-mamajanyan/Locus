@@ -44,6 +44,12 @@ screens draw from, so a "build" means the same live thing everywhere.
   own apps. On older Android versions (or with `dynamicColor = false`) it
   falls back to the custom "notebook" (light) / "chalkboard" (dark) palette.
   See `ui/theme/Theme.kt`.
+- **Launcher icon** — a simple adaptive icon (navy background, a ring with
+  one marked point — a literal "locus"). Works on Android 8.0+ (API 26+),
+  which is effectively all real devices; on the rare API 24/25 device it'll
+  fall back to a system default icon since no legacy PNG set was generated.
+  Use Android Studio's Image Asset Studio (`File → New → Image Asset`) if
+  you want full legacy coverage or a different design later.
 
 ## What's intentionally stubbed (this is a *base* app)
 
@@ -56,9 +62,6 @@ screens draw from, so a "build" means the same live thing everywhere.
   stand-ins for Fraunces / IBM Plex Sans / IBM Plex Mono. Drop `.ttf` files
   into `res/font` and swap the `FontFamily` values to match the web version
   exactly.
-- **No launcher icon.** The manifest doesn't reference one, so Android uses
-  a system default — use Android Studio's Image Asset Studio
-  (`File → New → Image Asset`) to generate a real one in a couple of clicks.
 - **Shapes are decorative, not draggable.** Adding a shape in Builder places
   it at a fixed default position rather than letting you drag it — real
   drag support would use `Modifier.pointerInput` + `detectDragGestures` on
