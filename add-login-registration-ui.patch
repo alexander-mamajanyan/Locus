@@ -1,0 +1,591 @@
+diff --git a/README.md b/README.md
+index d51de5b..ca0208d 100644
+--- a/README.md
++++ b/README.md
+@@ -51,6 +51,11 @@ screens draw from, so a "build" means the same live thing everywhere.
+   Use Android Studio's Image Asset Studio (`File → New → Image Asset`) if
+   you want full legacy coverage or a different design later.
+ 
++- **Login & registration pages** — `ui/screens/auth/`. Email + password
++  login, and sign-up with username / email / password / confirm, with inline
++  validation, show/hide password, and keyboard-aware layout. `LocusRoot.kt`
++  shows them on launch; set `REQUIRE_LOGIN = false` there to skip them while
++  developing other screens.
+ - **Firebase (Auth + Firestore)** — the SDK is wired in (`app/build.gradle.kts`
+   + the `google-services` plugin), ready for real login/registration and a
+   real database. You still need your own `google-services.json` (see below)
+@@ -80,9 +85,10 @@ rather keep it out of a public repo, add `app/google-services.json` to
+   in-memory object — Firebase is now *available* to the project, but the
+   repository hasn't been rewired to actually call Auth/Firestore yet.
+   That's the natural next step now that the SDK is connected.
+-- **No auth screens yet.** `currentUsername` is still a hardcoded constant;
+-  login/registration UI is the next piece to build now that Firebase Auth
+-  is available.
++- **Login/registration are UI-only.** The pages exist and validate input,
++  but nothing is checked against a real account: any well-formed form lets
++  you in, and `currentUsername` is still a hardcoded constant. Wiring them
++  to Firebase Auth is the next step (see `AuthScreen.kt`).
+ - **No custom fonts.** `ui/theme/Type.kt` uses system serif/sans/mono as
+   stand-ins for Fraunces / IBM Plex Sans / IBM Plex Mono. Drop `.ttf` files
+   into `res/font` and swap the `FontFamily` values to match the web version
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 8486f3d..da68aae 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -13,7 +13,8 @@
+         <activity
+             android:name=".MainActivity"
+             android:exported="true"
+-            android:theme="@style/Theme.Locus">
++            android:theme="@style/Theme.Locus"
++            android:windowSoftInputMode="adjustResize">
+             <intent-filter>
+                 <action android:name="android.intent.action.MAIN" />
+                 <category android:name="android.intent.category.LAUNCHER" />
+diff --git a/app/src/main/java/com/locus/app/MainActivity.kt b/app/src/main/java/com/locus/app/MainActivity.kt
+index 3d2b485..27557a9 100644
+--- a/app/src/main/java/com/locus/app/MainActivity.kt
++++ b/app/src/main/java/com/locus/app/MainActivity.kt
+@@ -4,7 +4,7 @@ import android.os.Bundle
+ import androidx.activity.ComponentActivity
+ import androidx.activity.compose.setContent
+ import androidx.activity.enableEdgeToEdge
+-import com.locus.app.ui.LocusApp
++import com.locus.app.ui.LocusRoot
+ import com.locus.app.ui.theme.LocusTheme
+ 
+ class MainActivity : ComponentActivity() {
+@@ -13,7 +13,7 @@ class MainActivity : ComponentActivity() {
+         enableEdgeToEdge()
+         setContent {
+             LocusTheme {
+-                LocusApp()
++                LocusRoot()
+             }
+         }
+     }
+diff --git a/app/src/main/java/com/locus/app/ui/LocusRoot.kt b/app/src/main/java/com/locus/app/ui/LocusRoot.kt
+new file mode 100644
+index 0000000..6bcd433
+--- /dev/null
++++ b/app/src/main/java/com/locus/app/ui/LocusRoot.kt
+@@ -0,0 +1,26 @@
++package com.locus.app.ui
++
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.saveable.rememberSaveable
++import androidx.compose.runtime.setValue
++import com.locus.app.ui.screens.auth.AuthScreen
++
++/**
++ * Set to false while you're working on other screens to skip the login
++ * pages and launch straight into the app.
++ */
++private const val REQUIRE_LOGIN = true
++
++@Composable
++fun LocusRoot() {
++    // In-memory only for now: the app shows the login page on every fresh launch.
++    var signedIn by rememberSaveable { mutableStateOf(!REQUIRE_LOGIN) }
++
++    if (signedIn) {
++        LocusApp()
++    } else {
++        AuthScreen(onAuthenticated = { signedIn = true })
++    }
++}
+diff --git a/app/src/main/java/com/locus/app/ui/screens/auth/AuthComponents.kt b/app/src/main/java/com/locus/app/ui/screens/auth/AuthComponents.kt
+new file mode 100644
+index 0000000..fdc0798
+--- /dev/null
++++ b/app/src/main/java/com/locus/app/ui/screens/auth/AuthComponents.kt
+@@ -0,0 +1,211 @@
++package com.locus.app.ui.screens.auth
++
++import androidx.compose.foundation.Canvas
++import androidx.compose.foundation.layout.*
++import androidx.compose.foundation.rememberScrollState
++import androidx.compose.foundation.text.KeyboardActions
++import androidx.compose.foundation.text.KeyboardOptions
++import androidx.compose.foundation.verticalScroll
++import androidx.compose.material.icons.Icons
++import androidx.compose.material.icons.filled.Visibility
++import androidx.compose.material.icons.filled.VisibilityOff
++import androidx.compose.material3.*
++import androidx.compose.runtime.*
++import androidx.compose.ui.Alignment
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.focus.FocusDirection
++import androidx.compose.ui.geometry.Offset
++import androidx.compose.ui.graphics.drawscope.Stroke
++import androidx.compose.ui.platform.LocalFocusManager
++import androidx.compose.ui.text.font.FontStyle
++import androidx.compose.ui.text.font.FontWeight
++import androidx.compose.ui.text.input.ImeAction
++import androidx.compose.ui.text.input.KeyboardType
++import androidx.compose.ui.text.input.PasswordVisualTransformation
++import androidx.compose.ui.text.input.VisualTransformation
++import androidx.compose.ui.unit.dp
++import androidx.compose.ui.unit.sp
++import com.locus.app.ui.theme.DisplayFont
++
++/**
++ * Page frame shared by login and registration: respects the status bar and
++ * keyboard (the app is edge-to-edge), and scrolls when the keyboard is up
++ * on a small screen.
++ */
++@Composable
++fun AuthColumn(content: @Composable ColumnScope.() -> Unit) {
++    Column(
++        modifier = Modifier
++            .fillMaxSize()
++            .systemBarsPadding()
++            .imePadding()
++            .verticalScroll(rememberScrollState())
++            .padding(horizontal = 24.dp, vertical = 24.dp),
++        horizontalAlignment = Alignment.CenterHorizontally,
++        content = content
++    )
++}
++
++/** The launcher-icon motif (a ring with one marked point) drawn in theme colors. */
++@Composable
++private fun LocusMark(modifier: Modifier = Modifier) {
++    val ringColor = MaterialTheme.colorScheme.onBackground
++    val dotColor = MaterialTheme.colorScheme.secondary
++    Canvas(modifier = modifier.size(64.dp)) {
++        val radius = size.minDimension * 0.34f
++        drawCircle(
++            color = ringColor,
++            radius = radius,
++            style = Stroke(width = size.minDimension * 0.07f)
++        )
++        drawCircle(
++            color = dotColor,
++            radius = size.minDimension * 0.09f,
++            center = Offset(center.x, center.y - radius)
++        )
++    }
++}
++
++@Composable
++fun AuthHeader(subtitle: String) {
++    Column(
++        horizontalAlignment = Alignment.CenterHorizontally,
++        modifier = Modifier.fillMaxWidth()
++    ) {
++        LocusMark()
++        Spacer(Modifier.height(12.dp))
++        Text(
++            "Locus",
++            fontFamily = DisplayFont,
++            fontStyle = FontStyle.Italic,
++            fontWeight = FontWeight.SemiBold,
++            fontSize = 38.sp
++        )
++        Spacer(Modifier.height(6.dp))
++        Text(
++            subtitle,
++            fontSize = 15.sp,
++            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.65f)
++        )
++    }
++}
++
++@Composable
++fun AuthTextField(
++    value: String,
++    onValueChange: (String) -> Unit,
++    label: String,
++    modifier: Modifier = Modifier,
++    keyboardType: KeyboardType = KeyboardType.Text,
++    imeAction: ImeAction = ImeAction.Next,
++    errorText: String? = null,
++    enabled: Boolean = true,
++    onDone: () -> Unit = {}
++) {
++    val focusManager = LocalFocusManager.current
++    OutlinedTextField(
++        value = value,
++        onValueChange = onValueChange,
++        label = { Text(label) },
++        singleLine = true,
++        enabled = enabled,
++        isError = errorText != null,
++        supportingText = if (errorText != null) {
++            { Text(errorText) }
++        } else null,
++        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
++        keyboardActions = KeyboardActions(
++            onNext = { focusManager.moveFocus(FocusDirection.Down) },
++            onDone = {
++                focusManager.clearFocus()
++                onDone()
++            }
++        ),
++        modifier = modifier.fillMaxWidth()
++    )
++}
++
++@Composable
++fun PasswordTextField(
++    value: String,
++    onValueChange: (String) -> Unit,
++    label: String,
++    modifier: Modifier = Modifier,
++    imeAction: ImeAction = ImeAction.Done,
++    errorText: String? = null,
++    enabled: Boolean = true,
++    onDone: () -> Unit = {}
++) {
++    var visible by remember { mutableStateOf(false) }
++    val focusManager = LocalFocusManager.current
++    OutlinedTextField(
++        value = value,
++        onValueChange = onValueChange,
++        label = { Text(label) },
++        singleLine = true,
++        enabled = enabled,
++        isError = errorText != null,
++        supportingText = if (errorText != null) {
++            { Text(errorText) }
++        } else null,
++        visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
++        trailingIcon = {
++            IconButton(onClick = { visible = !visible }) {
++                Icon(
++                    imageVector = if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
++                    contentDescription = if (visible) "Hide password" else "Show password"
++                )
++            }
++        },
++        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = imeAction),
++        keyboardActions = KeyboardActions(
++            onNext = { focusManager.moveFocus(FocusDirection.Down) },
++            onDone = {
++                focusManager.clearFocus()
++                onDone()
++            }
++        ),
++        modifier = modifier.fillMaxWidth()
++    )
++}
++
++@Composable
++fun AuthButton(
++    text: String,
++    onClick: () -> Unit,
++    modifier: Modifier = Modifier,
++    loading: Boolean = false
++) {
++    Button(
++        onClick = onClick,
++        enabled = !loading,
++        modifier = modifier
++            .fillMaxWidth()
++            .height(50.dp)
++    ) {
++        if (loading) {
++            CircularProgressIndicator(
++                modifier = Modifier.size(20.dp),
++                strokeWidth = 2.dp,
++                color = MaterialTheme.colorScheme.onPrimary
++            )
++        } else {
++            Text(text, fontWeight = FontWeight.SemiBold)
++        }
++    }
++}
++
++/** Shows an error that came back from the server (wrong password, email taken, ...). */
++@Composable
++fun FormError(message: String?) {
++    if (message != null) {
++        Text(
++            message,
++            color = MaterialTheme.colorScheme.error,
++            fontSize = 13.sp,
++            modifier = Modifier
++                .fillMaxWidth()
++                .padding(top = 10.dp)
++        )
++    }
++}
+diff --git a/app/src/main/java/com/locus/app/ui/screens/auth/AuthScreen.kt b/app/src/main/java/com/locus/app/ui/screens/auth/AuthScreen.kt
+new file mode 100644
+index 0000000..fdab367
+--- /dev/null
++++ b/app/src/main/java/com/locus/app/ui/screens/auth/AuthScreen.kt
+@@ -0,0 +1,45 @@
++package com.locus.app.ui.screens.auth
++
++import androidx.activity.compose.BackHandler
++import androidx.compose.foundation.layout.fillMaxSize
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.Surface
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.saveable.rememberSaveable
++import androidx.compose.runtime.setValue
++import androidx.compose.ui.Modifier
++
++/**
++ * Hosts the login and registration pages and switches between them.
++ *
++ * STUB: nothing is checked against a real account yet. Any form that passes
++ * validation calls [onAuthenticated]. When Firebase is wired in, replace the
++ * two `onLogin` / `onRegister` lambdas below with real sign-in / sign-up
++ * calls, and only invoke [onAuthenticated] when they succeed (pass their
++ * progress and errors into the screens' `isLoading` / `serverError`).
++ */
++@Composable
++fun AuthScreen(onAuthenticated: () -> Unit) {
++    var showRegister by rememberSaveable { mutableStateOf(false) }
++
++    Surface(
++        modifier = Modifier.fillMaxSize(),
++        color = MaterialTheme.colorScheme.background
++    ) {
++        if (showRegister) {
++            // System back on the registration page returns to login instead of closing the app.
++            BackHandler { showRegister = false }
++            RegisterScreen(
++                onRegister = { _, _, _ -> onAuthenticated() },
++                onGoToLogin = { showRegister = false }
++            )
++        } else {
++            LoginScreen(
++                onLogin = { _, _ -> onAuthenticated() },
++                onGoToRegister = { showRegister = true }
++            )
++        }
++    }
++}
+diff --git a/app/src/main/java/com/locus/app/ui/screens/auth/LoginScreen.kt b/app/src/main/java/com/locus/app/ui/screens/auth/LoginScreen.kt
+new file mode 100644
+index 0000000..c7fac55
+--- /dev/null
++++ b/app/src/main/java/com/locus/app/ui/screens/auth/LoginScreen.kt
+@@ -0,0 +1,90 @@
++package com.locus.app.ui.screens.auth
++
++import android.util.Patterns
++import androidx.compose.foundation.layout.*
++import androidx.compose.material3.*
++import androidx.compose.runtime.*
++import androidx.compose.runtime.saveable.rememberSaveable
++import androidx.compose.ui.Alignment
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.text.input.KeyboardType
++import androidx.compose.ui.unit.dp
++import androidx.compose.ui.unit.sp
++
++/**
++ * Login page. It only validates the form shape (non-empty, looks like an
++ * email) and then hands the values to [onLogin] — checking them against a
++ * real account is the caller's job.
++ *
++ * [isLoading] and [serverError] exist so a real backend can drive the UI
++ * later (spinner on the button, "wrong password" message) without touching
++ * this file again.
++ */
++@Composable
++fun LoginScreen(
++    onLogin: (email: String, password: String) -> Unit,
++    onGoToRegister: () -> Unit,
++    isLoading: Boolean = false,
++    serverError: String? = null
++) {
++    var email by rememberSaveable { mutableStateOf("") }
++    var password by remember { mutableStateOf("") }
++    var submitted by rememberSaveable { mutableStateOf(false) }
++
++    fun emailProblem(): String? = when {
++        email.isBlank() -> "Enter your email."
++        !Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches() -> "That doesn't look like an email address."
++        else -> null
++    }
++
++    fun passwordProblem(): String? =
++        if (password.isEmpty()) "Enter your password." else null
++
++    fun submit() {
++        submitted = true
++        if (emailProblem() == null && passwordProblem() == null) {
++            onLogin(email.trim(), password)
++        }
++    }
++
++    AuthColumn {
++        Spacer(Modifier.height(24.dp))
++        AuthHeader(subtitle = "Welcome back")
++        Spacer(Modifier.height(32.dp))
++
++        AuthTextField(
++            value = email,
++            onValueChange = { email = it },
++            label = "Email",
++            keyboardType = KeyboardType.Email,
++            errorText = if (submitted) emailProblem() else null,
++            enabled = !isLoading
++        )
++        Spacer(Modifier.height(12.dp))
++        PasswordTextField(
++            value = password,
++            onValueChange = { password = it },
++            label = "Password",
++            errorText = if (submitted) passwordProblem() else null,
++            enabled = !isLoading,
++            onDone = { submit() }
++        )
++
++        FormError(serverError)
++
++        Spacer(Modifier.height(20.dp))
++        AuthButton(text = "Log in", loading = isLoading, onClick = { submit() })
++
++        Spacer(Modifier.height(8.dp))
++        Row(verticalAlignment = Alignment.CenterVertically) {
++            Text(
++                "New to Locus?",
++                fontSize = 14.sp,
++                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.65f)
++            )
++            TextButton(onClick = onGoToRegister, enabled = !isLoading) {
++                Text("Create an account")
++            }
++        }
++    }
++}
+diff --git a/app/src/main/java/com/locus/app/ui/screens/auth/RegisterScreen.kt b/app/src/main/java/com/locus/app/ui/screens/auth/RegisterScreen.kt
+new file mode 100644
+index 0000000..e1b9a33
+--- /dev/null
++++ b/app/src/main/java/com/locus/app/ui/screens/auth/RegisterScreen.kt
+@@ -0,0 +1,123 @@
++package com.locus.app.ui.screens.auth
++
++import android.util.Patterns
++import androidx.compose.foundation.layout.*
++import androidx.compose.material3.*
++import androidx.compose.runtime.*
++import androidx.compose.runtime.saveable.rememberSaveable
++import androidx.compose.ui.Alignment
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.text.input.ImeAction
++import androidx.compose.ui.text.input.KeyboardType
++import androidx.compose.ui.unit.dp
++import androidx.compose.ui.unit.sp
++
++private val USERNAME_REGEX = Regex("^[A-Za-z0-9._]{3,20}\$")
++
++/**
++ * Registration page. Validates the form shape locally (username format,
++ * email format, password length, matching confirmation) and then hands
++ * the values to [onRegister]. Creating a real account is the caller's job.
++ *
++ * [isLoading] and [serverError] let a real backend drive the UI later
++ * ("email already in use", spinner on the button) with no changes here.
++ */
++@Composable
++fun RegisterScreen(
++    onRegister: (username: String, email: String, password: String) -> Unit,
++    onGoToLogin: () -> Unit,
++    isLoading: Boolean = false,
++    serverError: String? = null
++) {
++    var username by rememberSaveable { mutableStateOf("") }
++    var email by rememberSaveable { mutableStateOf("") }
++    var password by remember { mutableStateOf("") }
++    var confirm by remember { mutableStateOf("") }
++    var submitted by rememberSaveable { mutableStateOf(false) }
++
++    fun usernameProblem(): String? =
++        if (!USERNAME_REGEX.matches(username.trim())) {
++            "3-20 characters: letters, numbers, . and _"
++        } else null
++
++    fun emailProblem(): String? = when {
++        email.isBlank() -> "Enter your email."
++        !Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches() -> "That doesn't look like an email address."
++        else -> null
++    }
++
++    fun passwordProblem(): String? =
++        if (password.length < 6) "Use at least 6 characters." else null
++
++    fun confirmProblem(): String? =
++        if (confirm != password) "Passwords don't match." else null
++
++    fun submit() {
++        submitted = true
++        val allGood = usernameProblem() == null &&
++            emailProblem() == null &&
++            passwordProblem() == null &&
++            confirmProblem() == null
++        if (allGood) {
++            onRegister(username.trim(), email.trim(), password)
++        }
++    }
++
++    AuthColumn {
++        Spacer(Modifier.height(16.dp))
++        AuthHeader(subtitle = "Build, share, and remix math")
++        Spacer(Modifier.height(28.dp))
++
++        AuthTextField(
++            value = username,
++            onValueChange = { username = it },
++            label = "Username",
++            errorText = if (submitted) usernameProblem() else null,
++            enabled = !isLoading
++        )
++        Spacer(Modifier.height(12.dp))
++        AuthTextField(
++            value = email,
++            onValueChange = { email = it },
++            label = "Email",
++            keyboardType = KeyboardType.Email,
++            errorText = if (submitted) emailProblem() else null,
++            enabled = !isLoading
++        )
++        Spacer(Modifier.height(12.dp))
++        PasswordTextField(
++            value = password,
++            onValueChange = { password = it },
++            label = "Password",
++            imeAction = ImeAction.Next,
++            errorText = if (submitted) passwordProblem() else null,
++            enabled = !isLoading
++        )
++        Spacer(Modifier.height(12.dp))
++        PasswordTextField(
++            value = confirm,
++            onValueChange = { confirm = it },
++            label = "Confirm password",
++            errorText = if (submitted) confirmProblem() else null,
++            enabled = !isLoading,
++            onDone = { submit() }
++        )
++
++        FormError(serverError)
++
++        Spacer(Modifier.height(20.dp))
++        AuthButton(text = "Create account", loading = isLoading, onClick = { submit() })
++
++        Spacer(Modifier.height(8.dp))
++        Row(verticalAlignment = Alignment.CenterVertically) {
++            Text(
++                "Already have an account?",
++                fontSize = 14.sp,
++                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.65f)
++            )
++            TextButton(onClick = onGoToLogin, enabled = !isLoading) {
++                Text("Log in")
++            }
++        }
++    }
++}

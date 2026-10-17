@@ -51,6 +51,11 @@ screens draw from, so a "build" means the same live thing everywhere.
   Use Android Studio's Image Asset Studio (`File → New → Image Asset`) if
   you want full legacy coverage or a different design later.
 
+- **Login & registration pages** — `ui/screens/auth/`. Email + password
+  login, and sign-up with username / email / password / confirm, with inline
+  validation, show/hide password, and keyboard-aware layout. `LocusRoot.kt`
+  shows them on launch; set `REQUIRE_LOGIN = false` there to skip them while
+  developing other screens.
 - **Firebase (Auth + Firestore)** — the SDK is wired in (`app/build.gradle.kts`
   + the `google-services` plugin), ready for real login/registration and a
   real database. You still need your own `google-services.json` (see below)
@@ -80,9 +85,10 @@ rather keep it out of a public repo, add `app/google-services.json` to
   in-memory object — Firebase is now *available* to the project, but the
   repository hasn't been rewired to actually call Auth/Firestore yet.
   That's the natural next step now that the SDK is connected.
-- **No auth screens yet.** `currentUsername` is still a hardcoded constant;
-  login/registration UI is the next piece to build now that Firebase Auth
-  is available.
+- **Login/registration are UI-only.** The pages exist and validate input,
+  but nothing is checked against a real account: any well-formed form lets
+  you in, and `currentUsername` is still a hardcoded constant. Wiring them
+  to Firebase Auth is the next step (see `AuthScreen.kt`).
 - **No custom fonts.** `ui/theme/Type.kt` uses system serif/sans/mono as
   stand-ins for Fraunces / IBM Plex Sans / IBM Plex Mono. Drop `.ttf` files
   into `res/font` and swap the `FontFamily` values to match the web version
