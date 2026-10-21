@@ -25,6 +25,15 @@ fun MessagesScreen(onOpenThread: (String) -> Unit) {
     Column(Modifier.fillMaxSize()) {
         TopAppBar(title = { Text("Messages") })
         LazyColumn(Modifier.fillMaxSize()) {
+            if (LocusRepository.conversations.isEmpty()) {
+                item {
+                    Text(
+                        "No conversations yet.",
+                        modifier = Modifier.fillMaxWidth().padding(24.dp),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+                    )
+                }
+            }
             items(LocusRepository.conversations, key = { it.id }) { convo ->
                 ConversationRow(convo, onClick = { onOpenThread(convo.username) })
             }

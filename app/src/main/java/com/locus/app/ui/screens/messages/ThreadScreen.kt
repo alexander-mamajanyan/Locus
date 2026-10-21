@@ -139,10 +139,20 @@ private fun MessageBubble(message: ChatMessage) {
                             params = build.params,
                             primaryValue = build.sliderValue,
                             shapes = build.shapes,
+                            expression = build.expression,
+                            geometryPoints = build.geometryPoints,
+                            geometryObjects = build.geometryObjects,
+                            canvasTexts = build.canvasTexts,
+                            canvasBoxes = build.canvasBoxes,
+                            showBaseFunction = build.showBaseFunction,
                             modifier = Modifier.fillMaxWidth()
                         )
                         Text(
-                            build.formulaText(),
+                            if (build.canvasBoxes.isEmpty() && build.showBaseFunction) {
+                                build.formulaText()
+                            } else {
+                                "Math canvas (${build.canvasBoxes.size} boxes)"
+                            },
                             fontFamily = MathFont,
                             fontSize = 11.sp,
                             modifier = Modifier.padding(8.dp)

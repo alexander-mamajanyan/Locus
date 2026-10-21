@@ -11,15 +11,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/**
- * Login page. It only validates the form shape (non-empty, looks like an
- * email) and then hands the values to [onLogin] — checking them against a
- * real account is the caller's job.
- *
- * [isLoading] and [serverError] exist so a real backend can drive the UI
- * later (spinner on the button, "wrong password" message) without touching
- * this file again.
- */
+/** Validates login input locally, then hands it to [onLogin] for authentication. */
 @Composable
 fun LoginScreen(
     onLogin: (email: String, password: String) -> Unit,

@@ -3,8 +3,9 @@ package com.locus.app.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.google.firebase.auth.FirebaseAuth
 import com.locus.app.ui.screens.auth.AuthScreen
 
 /**
@@ -15,11 +16,12 @@ private const val REQUIRE_LOGIN = true
 
 @Composable
 fun LocusRoot() {
-    // In-memory only for now: the app shows the login page on every fresh launch.
-    var signedIn by rememberSaveable { mutableStateOf(!REQUIRE_LOGIN) }
+    var signedIn by remember {
+        mutableStateOf(!REQUIRE_LOGIN || FirebaseAuth.getInstance().currentUser != null)
+    }
 
     if (signedIn) {
-        LocusApp()
+        LocusApp(onSignOut = { signedIn = false })
     } else {
         AuthScreen(onAuthenticated = { signedIn = true })
     }

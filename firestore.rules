@@ -1,0 +1,421 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userFollowing(userId, targetId) {
+      return /databases/$(database)/documents/users/$(userId)/following/$(targetId);
+    }
+
+    function userFollower(userId, followerId) {
+      return /databases/$(database)/documents/users/$(userId)/followers/$(followerId);
+    }
+
+    function userLike(userId, postId) {
+      return /databases/$(database)/documents/users/$(userId)/likes/$(postId);
+    }
+
+    function postLike(postId, userId) {
+      return /databases/$(database)/documents/posts/$(postId)/likes/$(userId);
+    }
+
+    function postComment(postId, commentId) {
+      return /databases/$(database)/documents/posts/$(postId)/comments/$(commentId);
+    }
+
+    function commentLike(postId, commentId, userId) {
+      return /databases/$(database)/documents/posts/$(postId)/comments/$(commentId)/likes/$(userId);
+    }
+
+    function post(postId) {
+      return /databases/$(database)/documents/posts/$(postId);
+    }
+
+    function userProfile(userId) {
+      return /databases/$(database)/documents/users/$(userId);
+    }
+
+    function userCommentLike(userId, commentId) {
+      return /databases/$(database)/documents/users/$(userId)/commentLikes/$(commentId);
+    }
+
+    function userRepost(userId, postId) {
+      return /databases/$(database)/documents/users/$(userId)/reposts/$(postId);
+    }
+
+    function postRepost(postId, userId) {
+      return /databases/$(database)/documents/posts/$(postId)/reposts/$(userId);
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.username is string
+        && request.resource.data.bio is string
+        && request.resource.data.builds is int
+        && request.resource.data.followersCount is int
+        && request.resource.data.followingCount is int
+        && request.resource.data.get('photoUrl', '') is string
+        && request.resource.data.keys().hasOnly([
+          'username', 'bio', 'photoUrl', 'builds', 'followersCount', 'followingCount'
+        ]);
+
+      allow update: if signedIn()
+        && (
+          (
+            request.auth.uid == userId
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'username', 'bio', 'builds', 'followersCount', 'followingCount',
+              'lastFollowingUserId'
+            ])
+            && (
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(['builds'])
+              || request.resource.data.builds == resource.data.builds + 1
+            )
+            && (
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(['followersCount'])
+              || request.resource.data.followersCount == resource.data.followersCount
+            )
+            && (
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastFollowingUserId'])
+              || request.resource.data.diff(resource.data).affectedKeys().hasAny(['followingCount'])
+            )
+            && (
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(['followingCount'])
+              || (
+                request.resource.data.lastFollowingUserId is string
+                && (
+                  (
+                    existsAfter(userFollowing(userId, request.resource.data.lastFollowingUserId))
+                    && existsAfter(userFollower(request.resource.data.lastFollowingUserId, userId))
+                    && !exists(userFollowing(userId, request.resource.data.lastFollowingUserId))
+                    && !exists(userFollower(request.resource.data.lastFollowingUserId, userId))
+                    && request.resource.data.followingCount == resource.data.followingCount + 1
+                  )
+                  || (
+                    !existsAfter(userFollowing(userId, request.resource.data.lastFollowingUserId))
+                    && !existsAfter(userFollower(request.resource.data.lastFollowingUserId, userId))
+                    && exists(userFollowing(userId, request.resource.data.lastFollowingUserId))
+                    && exists(userFollower(request.resource.data.lastFollowingUserId, userId))
+                    && request.resource.data.followingCount == resource.data.followingCount - 1
+                  )
+                )
+              )
+            )
+          )
+          || (
+            request.auth.uid != userId
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followersCount'])
+            && (
+              (
+                existsAfter(userFollower(userId, request.auth.uid))
+                && existsAfter(userFollowing(request.auth.uid, userId))
+                && !exists(userFollower(userId, request.auth.uid))
+                && !exists(userFollowing(request.auth.uid, userId))
+                && request.resource.data.followersCount == resource.data.followersCount + 1
+              )
+              || (
+                !existsAfter(userFollower(userId, request.auth.uid))
+                && !existsAfter(userFollowing(request.auth.uid, userId))
+                && exists(userFollower(userId, request.auth.uid))
+                && exists(userFollowing(request.auth.uid, userId))
+                && request.resource.data.followersCount == resource.data.followersCount - 1
+              )
+            )
+          )
+          || (
+            request.auth.uid == userId
+            && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['username', 'bio', 'photoUrl'])
+            && request.resource.data.username is string
+            && request.resource.data.username.matches('^[A-Za-z0-9_]{3,20}$')
+            && request.resource.data.bio is string
+            && request.resource.data.bio.size() <= 160
+            && request.resource.data.photoUrl is string
+          )
+        );
+
+      allow delete: if false;
+
+      match /following/{targetId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.auth.uid == userId
+          && targetId != userId
+          && existsAfter(userFollower(targetId, userId));
+        allow delete: if signedIn()
+          && request.auth.uid == userId
+          && !existsAfter(userFollower(targetId, userId));
+        allow update: if false;
+      }
+
+      match /followers/{followerId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.auth.uid == followerId
+          && followerId != userId
+          && existsAfter(userFollowing(followerId, userId));
+        allow delete: if signedIn()
+          && request.auth.uid == followerId
+          && !existsAfter(userFollowing(followerId, userId));
+        allow update: if false;
+      }
+
+      match /likes/{postId} {
+        allow read: if signedIn() && request.auth.uid == userId;
+        allow create: if signedIn()
+          && request.auth.uid == userId
+          && existsAfter(postLike(postId, userId));
+        allow delete: if signedIn()
+          && request.auth.uid == userId
+          && !existsAfter(postLike(postId, userId));
+        allow update: if false;
+      }
+
+      match /commentLikes/{commentId} {
+        allow read: if signedIn() && request.auth.uid == userId;
+        allow create: if signedIn()
+          && request.auth.uid == userId
+          && request.resource.data.keys().hasAll(['postId', 'commentId'])
+          && request.resource.data.keys().hasOnly(['postId', 'commentId'])
+          && request.resource.data.commentId == commentId
+          && request.resource.data.postId is string
+          && !exists(commentLike(request.resource.data.postId, commentId, userId))
+          && existsAfter(commentLike(request.resource.data.postId, commentId, userId))
+          && exists(postComment(request.resource.data.postId, commentId))
+          && getAfter(postComment(request.resource.data.postId, commentId)).data.likes
+            == get(postComment(request.resource.data.postId, commentId)).data.get('likes', 0) + 1;
+        allow delete: if signedIn()
+          && request.auth.uid == userId
+          && exists(commentLike(resource.data.postId, commentId, userId))
+          && !existsAfter(commentLike(resource.data.postId, commentId, userId))
+          && getAfter(postComment(resource.data.postId, commentId)).data.likes
+            == get(postComment(resource.data.postId, commentId)).data.get('likes', 0) - 1;
+        allow update: if false;
+      }
+
+      match /reposts/{postId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.auth.uid == userId
+          && request.resource.data.keys().hasAll(['postId', 'userId', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['postId', 'userId', 'createdAt'])
+          && request.resource.data.postId == postId
+          && request.resource.data.userId == userId
+          && request.resource.data.createdAt == request.time
+          && exists(post(postId))
+          && !exists(postRepost(postId, userId))
+          && existsAfter(postRepost(postId, userId))
+          && getAfter(post(postId)).data.reposts == get(post(postId)).data.reposts + 1;
+        allow delete: if signedIn()
+          && request.auth.uid == userId
+          && exists(postRepost(postId, userId))
+          && !existsAfter(postRepost(postId, userId))
+          && getAfter(post(postId)).data.reposts == get(post(postId)).data.reposts - 1;
+        allow update: if false;
+      }
+
+      match /savedPosts/{postId} {
+        allow read: if signedIn() && request.auth.uid == userId;
+        allow create: if signedIn()
+          && request.auth.uid == userId
+          && request.resource.data.keys().hasAll(['postId', 'savedAt'])
+          && request.resource.data.keys().hasOnly(['postId', 'savedAt'])
+          && request.resource.data.postId == postId
+          && request.resource.data.savedAt == request.time
+          && exists(post(postId));
+        allow delete: if signedIn() && request.auth.uid == userId;
+        allow update: if false;
+      }
+    }
+
+    match /posts/{postId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.likes == 0
+        && request.resource.data.keys().hasOnly([
+          'ownerId', 'username', 'createdAt', 'caption', 'type', 'params',
+          'shapes', 'expression', 'geometryPoints', 'geometryObjects',
+          'canvasBoxes', 'showBaseFunction', 'likes', 'comments', 'reposts'
+        ]);
+      allow update: if signedIn()
+        && (
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes'])
+            && (
+              (
+                request.resource.data.likes == resource.data.likes + 1
+                && !exists(userLike(request.auth.uid, postId))
+                && !exists(postLike(postId, request.auth.uid))
+                && existsAfter(userLike(request.auth.uid, postId))
+                && existsAfter(postLike(postId, request.auth.uid))
+              )
+              || (
+                request.resource.data.likes == resource.data.likes - 1
+                && exists(userLike(request.auth.uid, postId))
+                && exists(postLike(postId, request.auth.uid))
+                && !existsAfter(userLike(request.auth.uid, postId))
+                && !existsAfter(postLike(postId, request.auth.uid))
+              )
+            )
+          )
+          || (
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['comments', 'lastCommentId'])
+            && request.resource.data.diff(resource.data).affectedKeys()
+              .hasAll(['comments', 'lastCommentId'])
+            && request.resource.data.lastCommentId is string
+            && request.resource.data.comments == resource.data.get('comments', 0) + 1
+            && existsAfter(postComment(postId, request.resource.data.lastCommentId))
+            && !exists(postComment(postId, request.resource.data.lastCommentId))
+            && getAfter(postComment(postId, request.resource.data.lastCommentId)).data.authorId
+              == request.auth.uid
+          )
+          || (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reposts'])
+            && (
+              (
+                request.resource.data.reposts == resource.data.reposts + 1
+                && !exists(userRepost(request.auth.uid, postId))
+                && !exists(postRepost(postId, request.auth.uid))
+                && existsAfter(userRepost(request.auth.uid, postId))
+                && existsAfter(postRepost(postId, request.auth.uid))
+              )
+              || (
+                request.resource.data.reposts == resource.data.reposts - 1
+                && exists(userRepost(request.auth.uid, postId))
+                && exists(postRepost(postId, request.auth.uid))
+                && !existsAfter(userRepost(request.auth.uid, postId))
+                && !existsAfter(postRepost(postId, request.auth.uid))
+              )
+            )
+          )
+        );
+      allow delete: if false;
+
+      match /likes/{userId} {
+        allow read: if signedIn() && request.auth.uid == userId;
+        allow create: if signedIn()
+          && request.auth.uid == userId
+          && existsAfter(userLike(userId, postId));
+        allow delete: if signedIn()
+          && request.auth.uid == userId
+          && !existsAfter(userLike(userId, postId));
+        allow update: if false;
+      }
+
+      match /reposts/{userId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.auth.uid == userId
+          && request.resource.data.keys().hasAll(['postId', 'userId', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['postId', 'userId', 'createdAt'])
+          && request.resource.data.postId == postId
+          && request.resource.data.userId == userId
+          && request.resource.data.createdAt == request.time
+          && !exists(userRepost(userId, postId))
+          && existsAfter(userRepost(userId, postId))
+          && getAfter(post(postId)).data.reposts == get(post(postId)).data.reposts + 1;
+        allow delete: if signedIn()
+          && request.auth.uid == userId
+          && exists(userRepost(userId, postId))
+          && !existsAfter(userRepost(userId, postId))
+          && getAfter(post(postId)).data.reposts == get(post(postId)).data.reposts - 1;
+        allow update: if false;
+      }
+
+      match /comments/{commentId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.resource.data.keys().hasOnly([
+            'authorId', 'username', 'text', 'createdAt',
+            'likes', 'replies', 'parentId'
+          ])
+          && request.resource.data.keys().hasAll([
+            'authorId', 'username', 'text', 'createdAt',
+            'likes', 'replies', 'parentId'
+          ])
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.username
+            == getAfter(userProfile(request.auth.uid)).data.username
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 1000
+          && request.resource.data.likes == 0
+          && request.resource.data.replies == 0
+          && (
+            request.resource.data.parentId == null
+            || (
+              request.resource.data.parentId is string
+              && exists(postComment(postId, request.resource.data.parentId))
+              && get(postComment(postId, request.resource.data.parentId)).data.get('parentId', null) == null
+            )
+          )
+          && request.resource.data.createdAt == request.time
+          && exists(post(postId))
+          && getAfter(post(postId)).data.lastCommentId == commentId
+          && getAfter(post(postId)).data.comments == get(post(postId)).data.get('comments', 0) + 1;
+        allow update: if signedIn()
+          && (
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes'])
+              && (
+                (
+                  request.resource.data.likes == resource.data.get('likes', 0) + 1
+                  && !exists(commentLike(postId, commentId, request.auth.uid))
+                  && !exists(userCommentLike(request.auth.uid, commentId))
+                  && existsAfter(commentLike(postId, commentId, request.auth.uid))
+                  && existsAfter(userCommentLike(request.auth.uid, commentId))
+                )
+                || (
+                  request.resource.data.likes == resource.data.get('likes', 0) - 1
+                  && exists(commentLike(postId, commentId, request.auth.uid))
+                  && exists(userCommentLike(request.auth.uid, commentId))
+                  && !existsAfter(commentLike(postId, commentId, request.auth.uid))
+                  && !existsAfter(userCommentLike(request.auth.uid, commentId))
+                )
+              )
+            )
+            || (
+              request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['replies', 'lastReplyId'])
+              && request.resource.data.diff(resource.data).affectedKeys()
+                .hasAll(['replies', 'lastReplyId'])
+              && request.resource.data.replies == resource.data.get('replies', 0) + 1
+              && request.resource.data.lastReplyId is string
+              && existsAfter(postComment(postId, request.resource.data.lastReplyId))
+              && !exists(postComment(postId, request.resource.data.lastReplyId))
+              && getAfter(postComment(postId, request.resource.data.lastReplyId)).data.parentId == commentId
+            )
+          );
+        allow delete: if false;
+
+        match /likes/{likerId} {
+          allow read: if signedIn() && request.auth.uid == likerId;
+          allow create: if signedIn()
+            && request.auth.uid == likerId
+            && request.resource.data.keys().hasAll(['userId'])
+            && request.resource.data.keys().hasOnly(['userId'])
+            && request.resource.data.userId == request.auth.uid
+            && existsAfter(userCommentLike(request.auth.uid, commentId))
+            && getAfter(userCommentLike(request.auth.uid, commentId)).data.postId == postId
+            && !exists(userCommentLike(request.auth.uid, commentId))
+            && exists(postComment(postId, commentId))
+            && getAfter(postComment(postId, commentId)).data.likes
+              == get(postComment(postId, commentId)).data.get('likes', 0) + 1;
+          allow delete: if signedIn()
+            && request.auth.uid == likerId
+            && !existsAfter(userCommentLike(request.auth.uid, commentId))
+            && exists(userCommentLike(request.auth.uid, commentId))
+            && getAfter(postComment(postId, commentId)).data.likes
+              == get(postComment(postId, commentId)).data.get('likes', 0) - 1;
+          allow update: if false;
+        }
+      }
+    }
+  }
+}

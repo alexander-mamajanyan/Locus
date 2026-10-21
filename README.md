@@ -18,26 +18,44 @@ class deliverable.
 4. Let Gradle sync, then Run on an emulator or device (minSdk 24 / Android
    7.0+).
 
-There's no backend to configure and no API keys needed — everything runs
-from in-memory sample data, so it should build and launch immediately.
+Firebase is used for email/password authentication; the app's social and math
+posts, user profiles, likes, comments, reposts, saves, and follows are stored
+in Firestore. Messages remain local to the current app session.
 
 ## What's here
 
 - **Home** — a feed of `MathBuild`s rendered live on `Canvas` (not images).
-  Each card has a slider that redraws the function/circle in real time,
-  plus working like/comment/repost/save actions.
-- **Builder** — pick a function family (sine, linear, quadratic, circle),
-  drag sliders, layer on circle/triangle/point shapes, write a caption, and
-  post — it's prepended to the feed and to your profile grid immediately.
+  Preset function and circle cards have sliders that redraw them in real time;
+  custom formula builds keep their expression fixed. Posts and like counts sync
+  through Firestore; comments open a live thread with likes and replies, and
+  users can repost or save posts. The feed starts empty until users publish,
+  and search can find registered users to follow. Reposts do not yet show a
+  separate bubble in the feed.
+- **Create playground** — keep function graphs, display-only math equations,
+  geometry, and text in separate boxes on one canvas. The math keypad helps
+  write equations such as `x^2 = 2*x`; the Graph tool separately plots
+  functions such as `x^2 - 2*x` and `sin(x)`. Drag boxes to arrange the plane,
+  then use the handles to resize or rotate them. Create containers for related
+  elements or select existing boxes and group them; move, resize, or rotate a
+  container to transform its contents together. Add points, segments, and
+  circles inside a geometry box. Arithmetic, Geometry, and Other tool tabs sit
+  above the app navigation. Function graphs show small dots at
+  intercepts, visible local extrema, and inflection points; tap a dot to
+  highlight it and read its coordinates. Resize objects freely from their
+  corner handles. Post the whole canvas to the feed.
 - **Messages** — a conversation list and a thread view with a math-mode
   toggle (`Σ`) that live-previews `y=x^2` style input, plus bubbles that can
   carry a real mini live-rendered build.
-- **Profile** — works for both you and anyone else (tap a username in the
-  feed). Follow/unfollow updates the stats live. Grid of builds renders the
-  same live `Canvas` thumbnails as the feed.
+- **Profile** — works for you and other registered users (tap a username in
+  the feed or search). Edit your username, bio, and profile photo; switch
+  between your posts and reposts; and open your saved posts privately. Settings
+  include password reset and sign out. Follow/unfollow and follower counts sync
+  through Firestore. Grid of builds renders the same live `Canvas` thumbnails
+  as the feed.
 
-The math renderer (`ui/components/MathCanvas.kt`) is the one place all four
-screens draw from, so a "build" means the same live thing everywhere.
+The math renderer (`ui/components/MathCanvas.kt`) is the one place the
+playground, feed, messages, and profile thumbnails draw from, so a "build"
+means the same live thing everywhere.
 
 - **Dynamic color (Material You)** — on Android 12+, the whole app's colors
   are pulled live from the phone's wallpaper/system theme, same as Google's
@@ -57,10 +75,11 @@ screens draw from, so a "build" means the same live thing everywhere.
   shows them on launch; set `REQUIRE_LOGIN = false` there to skip them while
   developing other screens.
 - **Firebase (Auth + Firestore)** — the SDK is wired in (`app/build.gradle.kts`
-  + the `google-services` plugin), ready for real login/registration and a
-  real database. You still need your own `google-services.json` (see below)
-  — nothing works without it, and I can't generate that file for you since
-  it's tied to your specific Firebase project.
+  + the `google-services` plugin). Email/password login and registration use
+  Firebase Auth; registration stores the chosen username as the Firebase
+  user's display name. Posts, profiles, likes, comments, comment likes/replies,
+  reposts, saves, and follows use Firestore. Social actions and count updates
+  are atomic. Profile photos are uploaded to Firebase Storage.
 
 ## Firebase setup (do this once, per machine that builds the app)
 
@@ -68,7 +87,11 @@ screens draw from, so a "build" means the same live thing everywhere.
 2. Add an Android app to it with package name **exactly** `com.locus.app`
 3. Download the `google-services.json` it gives you and put it in `app/google-services.json` (next to `app/build.gradle.kts`, not inside `app/src`)
 4. In the console: Build → Authentication → enable Email/Password sign-in
-5. In the console: Build → Firestore Database → create one (test mode is fine while building)
+5. Create a database in Build → Firestore Database.
+6. Enable Firebase Storage and create a default bucket.
+7. Install the Firebase CLI, select your project, then deploy the included
+   Firestore and Storage rules from this folder:
+   `firebase deploy --only firestore:rules,storage --project YOUR_FIREBASE_PROJECT_ID`
 
 Without step 3, the build fails immediately with "File google-services.json
 is missing" — that's expected, not a bug in the code.
@@ -81,30 +104,17 @@ rather keep it out of a public repo, add `app/google-services.json` to
 
 ## What's intentionally stubbed (this is a *base* app)
 
-- **No real backend yet.** `data/LocusRepository.kt` is still a single
-  in-memory object — Firebase is now *available* to the project, but the
-  repository hasn't been rewired to actually call Auth/Firestore yet.
-  That's the natural next step now that the SDK is connected.
-- **Login/registration are UI-only.** The pages exist and validate input,
-  but nothing is checked against a real account: any well-formed form lets
-  you in, and `currentUsername` is still a hardcoded constant. Wiring them
-  to Firebase Auth is the next step (see `AuthScreen.kt`).
+- **Messages are session-only.** Conversation messages are not persisted to
+  Firestore yet.
 - **No custom fonts.** `ui/theme/Type.kt` uses system serif/sans/mono as
   stand-ins for Fraunces / IBM Plex Sans / IBM Plex Mono. Drop `.ttf` files
   into `res/font` and swap the `FontFamily` values to match the web version
   exactly.
-- **Shapes are decorative, not draggable.** Adding a shape in Builder places
-  it at a fixed default position rather than letting you drag it — real
-  drag support would use `Modifier.pointerInput` + `detectDragGestures` on
-  the canvas.
 - **Chat "math mode" is regex-based**, not real LaTeX/MathJax rendering
   (`ui/util/Utils.kt#mathify`) — good enough for a demo, not a real typesetting engine.
 
 ## Natural next steps
 
-- Firebase Auth + Firestore (or Room for local-only) behind `LocusRepository`
-- A real equation parser (e.g. `exp4j` or a hand-rolled recursive-descent
-  parser) so Builder accepts arbitrary formulas, not just four presets
+- Persist messages and add repost bubbles to the feed
 - Hilt for dependency injection once there's a real repository to inject
-- Drag gestures for shape placement in Builder
 - Push notifications for likes/comments/messages

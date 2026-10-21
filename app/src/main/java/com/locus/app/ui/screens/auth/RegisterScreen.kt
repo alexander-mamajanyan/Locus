@@ -14,14 +14,7 @@ import androidx.compose.ui.unit.sp
 
 private val USERNAME_REGEX = Regex("^[A-Za-z0-9._]{3,20}\$")
 
-/**
- * Registration page. Validates the form shape locally (username format,
- * email format, password length, matching confirmation) and then hands
- * the values to [onRegister]. Creating a real account is the caller's job.
- *
- * [isLoading] and [serverError] let a real backend drive the UI later
- * ("email already in use", spinner on the button) with no changes here.
- */
+/** Validates registration input locally, then hands it to [onRegister]. */
 @Composable
 fun RegisterScreen(
     onRegister: (username: String, email: String, password: String) -> Unit,
